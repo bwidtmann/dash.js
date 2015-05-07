@@ -1,15 +1,32 @@
-/*
- * The copyright in this software is being made available under the BSD License, included below. This software may be subject to other third party and contributor rights, including patent rights, and no such rights are granted under this license.
+/**
+ * The copyright in this software is being made available under the BSD License,
+ * included below. This software may be subject to other third party and contributor
+ * rights, including patent rights, and no such rights are granted under this license.
  *
- * Copyright (c) 2013, Digital Primates
+ * Copyright (c) 2013, Dash Industry Forum.
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
- * •  Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
- * •  Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
- * •  Neither the name of the Digital Primates nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice, this
+ *  list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *  this list of conditions and the following disclaimer in the documentation and/or
+ *  other materials provided with the distribution.
+ *  * Neither the name of Dash Industry Forum nor the names of its
+ *  contributors may be used to endorse or promote products derived from this software
+ *  without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS AS IS AND ANY
+ *  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ *  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ *  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ *  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ *  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ *  POSSIBILITY OF SUCH DAMAGE.
  */
 Dash.dependencies.DashHandler = function () {
     "use strict";
@@ -168,26 +185,19 @@ Dash.dependencies.DashHandler = function () {
                 seg,
                 fTime;
 
-            //this.log("Checking for stream end...");
-            if (isDynamic) {
-                //this.log("Live never ends! (TODO)");
-                // TODO : Check the contents of the last box to signal end.
+            if (index < 0) {
                 isFinished = false;
-            } else {
-                if (index < 0) {
-                    isFinished = false;
-                } else if (index < representation.availableSegmentsNumber) {
-                    seg = getSegmentByIndex(index, representation);
+            } else if (isDynamic || index < representation.availableSegmentsNumber) {
+                seg = getSegmentByIndex(index, representation);
 
-                    if (seg) {
-                        fTime = seg.presentationStartTime - period.start;
-                        sDuration = representation.adaptation.period.duration;
-                        this.log(representation.segmentInfoType + ": " + fTime + " / " + sDuration);
-                        isFinished = (fTime >= sDuration);
-                    }
-                } else {
-                    isFinished = true;
+                if (seg) {
+                    fTime = seg.presentationStartTime - period.start;
+                    sDuration = representation.adaptation.period.duration;
+                    this.log(representation.segmentInfoType + ": " + fTime + " / " + sDuration);
+                    isFinished = (fTime >= sDuration);
                 }
+            } else {
+                isFinished = true;
             }
 
             return isFinished;
@@ -201,6 +211,16 @@ Dash.dependencies.DashHandler = function () {
                 presentationEndTime;
 
             duration = representation.segmentDuration;
+
+            /*
+             * From spec - If neither @duration attribute nor SegmentTimeline element is present, then the Representation 
+             * shall contain exactly one Media Segment. The MPD start time is 0 and the MPD duration is obtained 
+             * in the same way as for the last Media Segment in the Representation.
+             */
+            if (isNaN(duration)) {
+                duration = representation.adaptation.period.duration;
+            }
+
             presentationStartTime = representation.adaptation.period.start + (index * duration);
             presentationEndTime = presentationStartTime + duration;
 
@@ -366,7 +386,12 @@ Dash.dependencies.DashHandler = function () {
 
             start = representation.startNumber;
 
-            segmentRange = decideSegmentListRangeForTemplate.call(self, representation);
+            if (isNaN(duration) && !isDynamic) {
+                segmentRange = {start: start, end: start};
+            }
+            else {
+                segmentRange = decideSegmentListRangeForTemplate.call(self, representation);
+            }
 
             startIdx = segmentRange.start;
             endIdx = segmentRange.end;
@@ -388,8 +413,13 @@ Dash.dependencies.DashHandler = function () {
                 seg = null;
             }
 
-            representation.availableSegmentsNumber = Math.ceil((availabilityWindow.end - availabilityWindow.start) / duration);
-
+            if (isNaN(duration)) {
+                representation.availableSegmentsNumber = 1;
+            }
+            else {
+                representation.availableSegmentsNumber = Math.ceil((availabilityWindow.end - availabilityWindow.start) / duration);
+            }
+            
             return segments;
         },
 
@@ -413,6 +443,8 @@ Dash.dependencies.DashHandler = function () {
                 periodRelativeRange = self.timelineConverter.calcSegmentAvailabilityRange(representation, isDynamic);
             }
 
+            periodRelativeRange.start = Math.max(periodRelativeRange.start, 0);
+
             if (isDynamic && !self.timelineConverter.isTimeSyncCompleted()) {
                 start = Math.floor(periodRelativeRange.start / duration);
                 end = Math.floor(periodRelativeRange.end / duration);
@@ -422,7 +454,7 @@ Dash.dependencies.DashHandler = function () {
 
             // if segments exist we should try to find the latest buffered time, which is the presentation time of the
             // segment for the current index
-            if (currentSegmentList) {
+            if (currentSegmentList && currentSegmentList.length > 0) {
                 originSegment = getSegmentByIndex(index, representation);
                 originAvailabilityTime = originSegment ? self.timelineConverter.calcPeriodRelativeTimeFromMpdRelativeTime(representation, originSegment.presentationStartTime) :
                     (index > 0 ? (index * duration) : self.timelineConverter.calcPeriodRelativeTimeFromMpdRelativeTime(representation, requestedTime || currentSegmentList[0].presentationStartTime));
@@ -584,7 +616,7 @@ Dash.dependencies.DashHandler = function () {
             lastIdx = segments.length - 1;
             if (isDynamic && isNaN(this.timelineConverter.getExpectedLiveEdge())) {
                 lastSegment = segments[lastIdx];
-                liveEdge = lastSegment.presentationStartTime + lastSegment.duration;
+                liveEdge = lastSegment.presentationStartTime;
                 metrics = this.metricsModel.getMetricsFor("stream");
                 // the last segment is supposed to be a live edge
                 this.timelineConverter.setExpectedLiveEdge(liveEdge);
@@ -612,6 +644,10 @@ Dash.dependencies.DashHandler = function () {
                 hasSegments = representation.segmentInfoType !== "BaseURL" && representation.segmentInfoType !== "SegmentBase",
                 error;
 
+            if (!representation.segmentDuration && !representation.segments) {
+                updateSegmentList.call(self, representation);
+            }
+
             representation.segmentAvailabilityRange = null;
             representation.segmentAvailabilityRange = self.timelineConverter.calcSegmentAvailabilityRange(representation, isDynamic);
 
@@ -623,7 +659,10 @@ Dash.dependencies.DashHandler = function () {
 
             if (!keepIdx) index = -1;
 
-            updateSegmentList.call(self, representation);
+            if (representation.segmentDuration) {
+                updateSegmentList.call(self, representation);
+            }
+
             if (!hasInitialization) {
                 self.baseURLExt.loadInitialization(representation);
             }
@@ -762,6 +801,7 @@ Dash.dependencies.DashHandler = function () {
                 idx = index,
                 keepIdx = options ? options.keepIdx : false,
                 timeThreshold = options ? options.timeThreshold : null,
+                ignoreIsFinished = (options && options.ignoreIsFinished) ? true : false,
                 self = this;
 
             if (!representation) {
@@ -784,7 +824,7 @@ Dash.dependencies.DashHandler = function () {
             //self.log("Got a list of segments, so dig deeper.");
             self.log("Index for time " + time + " is " + index);
 
-            finished = isMediaFinished.call(self, representation);
+            finished = !ignoreIsFinished ? isMediaFinished.call(self, representation) : false;
 
             //self.log("Stream finished? " + finished);
             if (finished) {
@@ -813,7 +853,7 @@ Dash.dependencies.DashHandler = function () {
 
             representation.segments = null;
             representation.segmentAvailabilityRange = {start: time - step, end: time + step};
-            return getForTime.call(this, representation, time, {keepIdx: false});
+            return getForTime.call(this, representation, time, {keepIdx: false, ignoreIsFinished: true});
         },
 
         getNext = function (representation) {
@@ -959,6 +999,7 @@ Dash.dependencies.DashHandler = function () {
             currentTime = 0;
             requestedTime = undefined;
             index = -1;
+            isDynamic = undefined;
             this.unsubscribe(Dash.dependencies.DashHandler.eventList.ENAME_REPRESENTATION_UPDATED, this.streamProcessor.trackController);
         },
 

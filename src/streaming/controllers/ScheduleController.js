@@ -1,3 +1,33 @@
+/**
+ * The copyright in this software is being made available under the BSD License,
+ * included below. This software may be subject to other third party and contributor
+ * rights, including patent rights, and no such rights are granted under this license.
+ *
+ * Copyright (c) 2013, Dash Industry Forum.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice, this
+ *  list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *  this list of conditions and the following disclaimer in the documentation and/or
+ *  other materials provided with the distribution.
+ *  * Neither the name of Dash Industry Forum nor the names of its
+ *  contributors may be used to endorse or promote products derived from this software
+ *  without specific prior written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS AS IS AND ANY
+ *  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ *  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ *  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ *  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ *  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ *  POSSIBILITY OF SUCH DAMAGE.
+ */
 MediaPlayer.dependencies.ScheduleController = function () {
     "use strict";
 
@@ -9,7 +39,6 @@ MediaPlayer.dependencies.ScheduleController = function () {
         currentTrackInfo,
         initialPlayback = true,
         lastValidationTime = null,
-        lastABRRuleApplyTime = 0,
         isStopped = false,
         playListMetrics = null,
         playListTraceMetrics = null,
@@ -114,7 +143,7 @@ MediaPlayer.dependencies.ScheduleController = function () {
             for (i = 0; i < ln; i += 1) {
                 request = canceledRequests[i];
                 time = request.startTime + (request.duration / 2) + EPSILON;
-                request = this.adapter.getFragmentRequestForTime(this.streamProcessor, currentTrackInfo, time, {timeThreshold: 0});
+                request = this.adapter.getFragmentRequestForTime(this.streamProcessor, currentTrackInfo, time, {timeThreshold: 0, ignoreIsFinished: true});
                 this.fragmentController.prepareFragmentForLoading(fragmentModel, request);
             }
         },
@@ -149,38 +178,21 @@ MediaPlayer.dependencies.ScheduleController = function () {
 
         validate = function () {
             var now = new Date().getTime(),
-                isEnoughTimeSinceLastValidation = lastValidationTime ? (now - lastValidationTime > fragmentModel.getLoadingTime()) : true,
-                //manifestInfo = currentTrackInfo.mediaInfo.streamInfo.manifestInfo,
-                qualitySwitchThreshold = 1000; //TODO need to get average segment duration and cut that in half for interval to apply rule
+                isEnoughTimeSinceLastValidation = lastValidationTime ? (now - lastValidationTime > fragmentModel.getLoadingTime()) : true;
 
+            this.abrController.getPlaybackQuality(this.streamProcessor);
 
-            if (now - lastABRRuleApplyTime > qualitySwitchThreshold) {
-                lastABRRuleApplyTime = now;
-                this.abrController.getPlaybackQuality(this.streamProcessor);
-            }
-
-
-            if (!isEnoughTimeSinceLastValidation || isStopped || (this.playbackController.isPaused() && (!this.scheduleWhilePaused || isDynamic))) return;
+            if (!isEnoughTimeSinceLastValidation || isStopped || (this.playbackController.isPaused() && (this.playbackController.getPlayedRanges().length > 0) &&
+                (!this.scheduleWhilePaused || isDynamic))) return;
 
             lastValidationTime = now;
             getRequiredFragmentCount.call(this, onGetRequiredFragmentCount.bind(this));
-
-        },
-
-        clearMetrics = function () {
-            var self = this;
-
-            if (type === null || type === "") {
-                return;
-            }
-
-            self.metricsModel.clearCurrentMetricsForType(type);
         },
 
         onDataUpdateCompleted = function(e) {
             if (e.error) return;
 
-            currentTrackInfo = this.adapter.convertDataToTrack(e.data.currentRepresentation);
+            currentTrackInfo = this.adapter.convertDataToTrack(this.manifestModel.getValue(), e.data.currentRepresentation);
         },
 
         onStreamUpdated = function(e) {
@@ -188,7 +200,7 @@ MediaPlayer.dependencies.ScheduleController = function () {
 
             currentTrackInfo = this.streamProcessor.getCurrentTrack();
 
-            if (!isDynamic) {
+            if (!isDynamic || this.liveEdgeFinder.getLiveEdge() !== null) {
                 ready = true;
             }
 
@@ -249,9 +261,7 @@ MediaPlayer.dependencies.ScheduleController = function () {
             }
         },
 
-        onBufferLevelUpdated = function(e) {
-            var self = this;
-            self.metricsModel.addBufferLevel(type, new Date(), e.data.bufferLevel);
+        onBufferLevelUpdated = function(/*e*/) {
             validate.call(this);
         },
 
@@ -335,14 +345,14 @@ MediaPlayer.dependencies.ScheduleController = function () {
             var self = this,
                 liveEdgeTime = e.data.liveEdge,
                 manifestInfo = currentTrackInfo.mediaInfo.streamInfo.manifestInfo,
-                startTime = liveEdgeTime - Math.min((manifestInfo.minBufferTime * 2), manifestInfo.DVRWindowSize / 2),
+                startTime = liveEdgeTime - Math.min((self.playbackController.getLiveDelay()), manifestInfo.DVRWindowSize / 2),
                 request,
                 metrics = self.metricsModel.getMetricsFor("stream"),
                 manifestUpdateInfo = self.metricsExt.getCurrentManifestUpdate(metrics),
                 currentLiveStart = self.playbackController.getLiveStartTime(),
                 actualStartTime;
             // get a request for a start time
-            request = self.adapter.getFragmentRequestForTime(self.streamProcessor, currentTrackInfo, startTime);
+            request = self.adapter.getFragmentRequestForTime(self.streamProcessor, currentTrackInfo, startTime, {ignoreIsFinished: true});
             actualStartTime = request.startTime;
 
             if (isNaN(currentLiveStart) || (actualStartTime > currentLiveStart)) {
@@ -361,10 +371,12 @@ MediaPlayer.dependencies.ScheduleController = function () {
         log: undefined,
         system: undefined,
         metricsModel: undefined,
+        manifestModel: undefined,
         metricsExt: undefined,
         scheduleWhilePaused: undefined,
         timelineConverter: undefined,
         abrController: undefined,
+        playbackController: undefined,
         adapter: undefined,
         scheduleRulesCollection: undefined,
         rulesController: undefined,
@@ -403,7 +415,6 @@ MediaPlayer.dependencies.ScheduleController = function () {
             type = typeValue;
             self.setMediaType(type);
             self.streamProcessor = streamProcessor;
-            self.playbackController = streamProcessor.playbackController;
             self.fragmentController = streamProcessor.fragmentController;
             self.liveEdgeFinder = streamProcessor.liveEdgeFinder;
             self.bufferController = streamProcessor.bufferController;
@@ -439,7 +450,6 @@ MediaPlayer.dependencies.ScheduleController = function () {
             self.bufferController.unsubscribe(MediaPlayer.dependencies.BufferController.eventList.ENAME_BUFFER_LEVEL_BALANCED, self.scheduleRulesCollection.bufferLevelRule);
             fragmentModel.abortRequests();
             self.fragmentController.detachModel(fragmentModel);
-            clearMetrics.call(self);
             fragmentsToLoad = 0;
         },
 
