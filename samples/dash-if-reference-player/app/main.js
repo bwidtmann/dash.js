@@ -537,7 +537,7 @@ app.controller('DashController', function($scope, Sources, Notes, Contributors, 
     player.addEventListener(MediaPlayer.events.METRIC_CHANGED, metricChanged.bind(this));
     player.addEventListener(MediaPlayer.events.METRIC_UPDATED, metricUpdated.bind(this));
     player.addEventListener(MediaPlayer.events.STREAM_SWITCH_COMPLETED, streamSwitch.bind(this));
-
+    video.addEventListener('error', function() {console.log('?????????????????? videoElement event error')});
     player.attachView(video);
     player.setAutoPlay(true);
 
@@ -551,7 +551,24 @@ app.controller('DashController', function($scope, Sources, Notes, Contributors, 
 
     $scope.setAbrEnabled = function (enabled) {
         $scope.abrEnabled = enabled;
-        player.setAutoSwitchQuality(enabled);
+        var videoUrl;
+
+        if (enabled) {
+            videoUrl = 'http://damxduspo10.maxdome.de/1001087002-248588015-15dff/piff-production/content/legacy/63/startrekinto_5162391_2013/startrekinto_5162391_2013_uspo0720de20.ism/.mpd';
+        } else {
+            videoUrl = 'http://damxduspo10.maxdome.de/1001087002-248588015-15dff/piff-production/content/legacy/63/startrekinto_5162391_2013/startrekinto_5162391_2013_uspo0720en20.ism/.mpd';
+        }
+
+        var protData = {
+            'com.widevine.alpha': {
+                'laURL': 'http://prosieben.live.ott.irdeto.com/widevine/getlicense?CrmId=prosieben&AccountId=prosieben&ContentId=startrekinto_5162391_2013_man&SessionId=1645FA276C047977&Ticket=29A696DC2A90DFB6'
+            }
+        };
+
+        //player.retrieveManifest(videoUrl, function() {console.log('&&&&&&&&&&&&&&&& new manifest retrieved')} );
+        player.attachSource(videoUrl, null, protData);
+
+        //player.setAutoSwitchQuality(enabled);
     }
 
     $scope.abrUp = function (type) {
@@ -618,10 +635,17 @@ app.controller('DashController', function($scope, Sources, Notes, Contributors, 
 
     $scope.doLoad = function () {
         var protData = null;
-        if ($scope.selectedItem.hasOwnProperty("protData")) {
-            protData = $scope.selectedItem.protData;
-        }
-        player.attachSource($scope.selectedItem.url, null, protData);
+        //if ($scope.selectedItem.hasOwnProperty("protData")) {
+        //    protData = $scope.selectedItem.protData;
+        //}
+        protData = {
+            'com.widevine.alpha': {
+                'laURL': 'http://prosieben.live.ott.irdeto.com/widevine/getlicense?CrmId=prosieben&AccountId=prosieben&ContentId=startrekinto_5162391_2013_man&SessionId=1645FA276C047977&Ticket=29A696DC2A90DFB6'
+            }
+        };
+
+        player.attachSource('http://damxduspo10.maxdome.de/1001087002-248588015-15dff/piff-production/content/legacy/63/startrekinto_5162391_2013/startrekinto_5162391_2013_uspo0720de20.ism/.mpd', null, protData);
+        //player.attachSource($scope.selectedItem.url, null, protData);
         player.setAutoSwitchQuality($scope.abrEnabled);
         $scope.manifestUpdateInfo = null;
     }
