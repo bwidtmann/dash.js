@@ -561,7 +561,7 @@ app.controller('DashController', function($scope, Sources, Notes, Contributors, 
 
         var protData = {
             'com.widevine.alpha': {
-                'laURL': 'http://prosieben.live.ott.irdeto.com/widevine/getlicense?CrmId=prosieben&AccountId=prosieben&ContentId=startrekinto_5162391_2013_man&SessionId=1645FA276C047977&Ticket=29A696DC2A90DFB6'
+                'laURL': 'http://prosieben.live.ott.irdeto.com/widevine/getlicense?CrmId=prosieben&AccountId=prosieben&ContentId=startrekinto_5162391_2013_man&SessionId=1645FA276C047977&Ticket=3F7A8AF1BDA9609A'
             }
         };
 
@@ -640,7 +640,7 @@ app.controller('DashController', function($scope, Sources, Notes, Contributors, 
         //}
         protData = {
             'com.widevine.alpha': {
-                'laURL': 'http://prosieben.live.ott.irdeto.com/widevine/getlicense?CrmId=prosieben&AccountId=prosieben&ContentId=startrekinto_5162391_2013_man&SessionId=1645FA276C047977&Ticket=29A696DC2A90DFB6'
+                'laURL': 'http://prosieben.live.ott.irdeto.com/widevine/getlicense?CrmId=prosieben&AccountId=prosieben&ContentId=startrekinto_5162391_2013_man&SessionId=1645FA276C047977&Ticket=3F7A8AF1BDA9609A'
             }
         };
 
