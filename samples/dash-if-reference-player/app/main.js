@@ -648,6 +648,7 @@ app.controller('DashController', function($scope, Sources, Notes, Contributors, 
         //player.attachSource($scope.selectedItem.url, null, protData);
         player.setAutoSwitchQuality($scope.abrEnabled);
         $scope.manifestUpdateInfo = null;
+        //feature_1
     }
 
     $scope.hasLogo = function (item) {
